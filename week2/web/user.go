@@ -7,8 +7,12 @@ import (
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v5"
 	"net/http"
+	"strings"
+	"unicode/utf8"
 )
 
 type UserHandler struct {
@@ -43,6 +47,7 @@ func (u *UserHandler) RegisterRoutes(server *gin.Engine) {
 	ug.GET("/profile", u.Profile)
 	ug.POST("/signup", u.SignUp)
 	ug.POST("/login", u.Login)
+	ug.GET("/logout", u.Logout)
 	//ug.POST("/login", u.LoginJWT)
 	ug.POST("/edit", u.Edit)
 }
@@ -134,7 +139,7 @@ func (u *UserHandler) Login(ctx *gin.Context) {
 	sess.Options(sessions.Options{
 		//Secure: true,
 		HttpOnly: true,
-		MaxAge:   60,
+		MaxAge:   120,
 	})
 	sess.Save()
 	//sess.Save()
@@ -185,6 +190,32 @@ func (u *UserHandler) LoginJWT(ctx *gin.Context) {
 	//println(user)
 	//fmt.Printf(user)
 	return
+}
+
+// CustomValidator 是自定义的验证器结构
+type CustomValidator struct {
+	Validator *validator.Validate
+}
+
+// Engine 自定义验证器的实例化方法
+func (cv *CustomValidator) Engine() interface{} {
+	return cv.Validator
+}
+
+func (cv *CustomValidator) ValidateStruct(obj interface{}) error {
+	if err := cv.Validator.Struct(obj); err != nil {
+		if _, ok := err.(*validator.InvalidValidationError); ok {
+			return err
+		}
+
+		var errMsgs []string
+		for _, err := range err.(validator.ValidationErrors) {
+			errMsgs = append(errMsgs, fmt.Sprintf("Field %s: %s", err.Field(), err.Tag()))
+		}
+		return fmt.Errorf(strings.Join(errMsgs, "; "))
+	}
+
+	return nil
 }
 
 func (u *UserHandler) Profile(ctx *gin.Context) {
@@ -246,14 +277,61 @@ func (u *UserHandler) Profile(ctx *gin.Context) {
 
 func (u *UserHandler) Edit(ctx *gin.Context) {
 	type EditUserProfile struct {
-		Nickname string `json:"nickname"`
-		Birthday string `json:"birthday"`
-		Abstract string `json:"abstract"`
+		Nickname string `json:"nickname" binding:"required,customNicknameValid"`
+		Birthday string `json:"birthday" binding:"required,customBirthdayValid"`
+		Abstract string `json:"abstract" binding:"required,customAbstractValid"`
 	}
+	// 使用自定义验证器
+	validatorInstance := validator.New()
+	customValidator := &CustomValidator{Validator: validatorInstance}
+
+	// 注册自定义验证规则
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		_ = v.RegisterValidation("customNicknameValid", func(fl validator.FieldLevel) bool {
+			// 验证昵称长度：昵称字符串长度小于10，英文字符和中文长度一样
+			return utf8.RuneCountInString(fl.Field().String()) < 10
+		})
+
+		_ = v.RegisterValidation("customBirthdayValid", func(fl validator.FieldLevel) bool {
+			// 验证生日格式：YYYY-MM-DD，例如 1992-01-01
+			birthdayPattern := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`, 0)
+			flag, _ := birthdayPattern.MatchString(fl.Field().String())
+			return flag
+		})
+
+		_ = v.RegisterValidation("customAbstractValid", func(fl validator.FieldLevel) bool {
+			// 验证个人简历：长度小于500，英文字符和中文长度一样
+			return utf8.RuneCountInString(fl.Field().String()) <= 500
+			//return len(fl.Field().String()) <= 500
+		})
+	}
+	ctx.Set("custom_validator", customValidator)
+
 	var req EditUserProfile
 	sess := sessions.Default(ctx)
-	if err := ctx.Bind(&req); err != nil {
+	//if err := ctx.Bind(&req); err != nil {
+	//	//println(1111)
+	//	return
+	//}
+	if err := ctx.ShouldBindWith(&req, binding.JSON); err != nil {
 		//println(1111)
+		// 解析验证错误信息
+		var errMsg string
+		if validationErr, ok := err.(validator.ValidationErrors); ok {
+			for _, e := range validationErr {
+				switch e.Tag() {
+				case "customNicknameValid":
+					errMsg = "昵称字符串长度小于10，英文字符和中文长度一样"
+				case "customBirthdayValid":
+					errMsg = "生日格式：YYYY-MM-DD，例如 1992-01-01"
+				case "customAbstractValid":
+					errMsg = "验证个人简历长度小于500，英文字符和中文长度一样"
+				}
+			}
+		}
+		ctx.String(http.StatusOK, errMsg)
+		//c.JSON(http.StatusBadRequest, gin.H{"error": errMsg})
+
 		return
 	}
 	//println(1111)
@@ -284,6 +362,20 @@ func (u *UserHandler) Edit(ctx *gin.Context) {
 		return
 	}
 	ctx.String(http.StatusOK, "修改个人信息成功")
+}
+
+func (u *UserHandler) Logout(ctx *gin.Context) {
+	sess := sessions.Default(ctx)
+	// 我可以随便设置值了
+	// 你要放在 session 里面的值
+	sess.Options(sessions.Options{
+		//Secure: true,
+		//HttpOnly: true,
+		MaxAge: -1,
+	})
+	sess.Save()
+	println(111)
+	ctx.String(http.StatusOK, "退出登录成功")
 }
 
 //
