@@ -14,7 +14,7 @@
 
 1.修改用户信息，这里只允许修改如下字段
 
-![修改用户信息](https://github.com/chhackman/go_basic/tree/main/week2/img/修改用户信息.png)
+![修改用户信息](week2/img/修改用户信息.png)
 
 2.对上面的三个字段进行验证，截图如下
 
