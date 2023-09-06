@@ -17,12 +17,12 @@
 
 1.kubectl get services 的截图
 
-![kubectl get services ](img/service截图.png)
+![kubectl get services ](img/service截图.PNG)
 
 2.kubectl get pods 的截图，截图如下
 
-![kubectl get pods](img/pod截图.png)
+![kubectl get pods](img/pod截图.PNG)
 
 3.注册响应截图
 
-![注册响应截图](img/注册.png)
+![注册响应截图](img/注册.PNG)
