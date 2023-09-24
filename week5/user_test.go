@@ -220,6 +220,73 @@ func TestUserHandler_LoginSMS(t *testing.T) {
 				Msg:  "验证码校验通过",
 			},
 		},
+		{
+			name: "系统错误",
+			mock: func(ctrl *gomock.Controller) (service.UserService, service.CodeService) {
+				codesvc := svcmocks.NewMockCodeService(ctrl)
+				usersvc := svcmocks.NewMockUserService(ctrl)
+				codesvc.EXPECT().Verify(gomock.Any(), biz, "11111111", "11").Return(true, errors.New("系统错误"))
+				//usersvc.EXPECT().FindOrCreate(gomock.Any(), "11111111").Return(domain.User{
+				//	Phone: "11111111",
+				//}, nil)
+				return usersvc, codesvc
+			},
+			reqBody: `
+{
+	"phone": "11111111",
+	"code": "11"
+}
+`,
+			wantCode: http.StatusOK,
+			wantBody: Result{
+				Code: 5,
+				Msg:  "系统错误",
+			},
+		},
+		{
+			name: "验证码有误",
+			mock: func(ctrl *gomock.Controller) (service.UserService, service.CodeService) {
+				codesvc := svcmocks.NewMockCodeService(ctrl)
+				usersvc := svcmocks.NewMockUserService(ctrl)
+				codesvc.EXPECT().Verify(gomock.Any(), biz, "11111111", "11").Return(false, nil)
+				//usersvc.EXPECT().FindOrCreate(gomock.Any(), "11111111").Return(domain.User{
+				//	Phone: "11111111",
+				//}, nil)
+				return usersvc, codesvc
+			},
+			reqBody: `
+{
+	"phone": "11111111",
+	"code": "11"
+}
+`,
+			wantCode: http.StatusOK,
+			wantBody: Result{
+				Code: 4,
+				Msg:  "验证码有误",
+			},
+		},
+		{
+			name: "系统错误，数据库查询报错",
+			mock: func(ctrl *gomock.Controller) (service.UserService, service.CodeService) {
+				codesvc := svcmocks.NewMockCodeService(ctrl)
+				usersvc := svcmocks.NewMockUserService(ctrl)
+				codesvc.EXPECT().Verify(gomock.Any(), biz, "11111111", "11").Return(true, nil)
+				usersvc.EXPECT().FindOrCreate(gomock.Any(), "11111111").Return(nil, errors.New("报错"))
+				return usersvc, codesvc
+			},
+			reqBody: `
+{
+	"phone": "11111111",
+	"code": "11"
+}
+`,
+			wantCode: http.StatusOK,
+			wantBody: Result{
+				Code: 5,
+				Msg:  "系统错误",
+			},
+		},
 	}
 
 	for _, tc := range testCases {
